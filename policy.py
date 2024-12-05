@@ -84,6 +84,7 @@ class GreedyPolicy(Policy):
         # Pick a product that has quality > 0
         for prod in list_prods:
             if prod["quantity"] > 0:
+                print(prod["quantity"])
                 prod_size = prod["size"]
 
                 # Loop through all stocks

@@ -49,16 +49,37 @@ if __name__ == "__main__":
     print(info)
 
     policy2210xxx = Policy2210xxx()
-    for _ in range(1):
-        actions = policy2210xxx.get_action(observation, info)
-        # observation, reward, terminated, truncated, info = env.step(actions)
-        print(info)
-        for action in actions:
-            observation, reward, terminated, truncated, info = env.step(action)
-            print(action)
-            print(info)
+    ep = 0
+    # while ep < 1:
+    #     actions_2d = policy2210xxx.get_action(observation, info)
+    #     print(info)
+    #     #print(action)
+    #     #observation, reward, terminated, truncated, info = env.step(action)
+    #     # Iterate through the 2D actions array
+    #     # First level: product
+    #     for actions_for_product in actions_2d:  
+    #         # Second level: individual actions
+    #         for action in actions_for_product:  
+    #             observation, reward, terminated, truncated, info = env.step(action)
+    #             print(action)
+    #             print(info)
 
-    if terminated or truncated:
-        observation, info = env.reset()
+    #     if terminated or truncated:
+    #         observation, info = env.reset()
+    #         print(info)
+    #         ep += 1
+
+    while ep < 2:
+        action = policy2210xxx.get_action(observation, info)
+        observation, reward, terminated, truncated, info = env.step(action)
+        print(info)
+        print(action)
+
+        if terminated or truncated:
+            print(info)
+            print("Done")
+            observation, info = env.reset(seed=ep)
+            ep += 1
+
 
 env.close()
