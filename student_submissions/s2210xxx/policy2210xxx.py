@@ -379,14 +379,21 @@ class Policy2210xxx(Policy):
         
     #     return value
 
-    def __init__(self):
-        self.placement_plan = []
-        self.current_step = 0
-        self.has_planned = False
-        self.used_stock_area = 0
-        self.total_used_area = 0
-        self.previous_observation = None
-        self.overall_utilization = 0
+    def __init__(self, policy_id=1):
+        assert policy_id in [1, 2], "Policy ID must be 1 or 2"
+
+        # Student code here
+        if policy_id == 1:
+            self.placement_plan = []
+            self.current_step = 0
+            self.has_planned = False
+            self.used_stock_area = 0
+            self.total_used_area = 0
+            self.previous_observation = None
+            self.overall_utilization = 0
+            pass
+
+
 
     def _plan_placements_(self, observation):
         """Create a complete placement plan at the start"""

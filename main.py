@@ -69,17 +69,18 @@ if __name__ == "__main__":
     #         print(info)
     #         ep += 1
 
-    while ep < 2:
+    # Reset the environment
+    observation, info = env.reset(seed=42)
+    print(info)
+
+    policy2210xxx = Policy2210xxx(policy_id=1)
+    for _ in range(200):
         action = policy2210xxx.get_action(observation, info)
         observation, reward, terminated, truncated, info = env.step(action)
         print(info)
-        print(action)
 
         if terminated or truncated:
-            print(info)
-            print("Done")
-            observation, info = env.reset(seed=ep)
-            ep += 1
+            observation, info = env.reset()
 
 
 env.close()
