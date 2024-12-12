@@ -387,6 +387,9 @@ class Policy2210xxx(Policy):
         self.total_used_area = 0
         self.previous_observation = None
         self.overall_utilization = 0
+        self.sorted_stocks = None
+        self.used_stocks = set()
+        self.remaining_products = 0
 
     def _plan_placements_(self, observation):
         """Create a complete placement plan at the start"""
@@ -397,137 +400,48 @@ class Policy2210xxx(Policy):
         self.used_stock_area = 0
         self.total_used_area = 0
         
-        # Get unique product sizes
-        unique_sizes = set()
+        # Sort stocks only if not sorted yet
+        if self.sorted_stocks is None:
+            self.sorted_stocks = []
+            for i, stock in enumerate(stocks):
+                w, h = self._get_stock_size_(stock)
+                self.sorted_stocks.append((i, w, h, w * h))
+            self.sorted_stocks.sort(key=lambda x: x[3], reverse=True)
+            self.used_stocks = set()
+
+        # Create and sort product list
+        self.product_list = []
         for prod in products:
             if prod["quantity"] > 0:
-                unique_sizes.add(tuple(prod["size"]))
+                size = prod["size"]
+                area = size[0] * size[1]
+                for _ in range(prod["quantity"]):
+                    self.product_list.append((size[0], size[1], area))
         
-        # If only one product size, use different strategy
-        if len(unique_sizes) == 1:
-            placement_plan = self._plan_single_product_size_(observation, unique_sizes.pop())
-        else:
-            placement_plan = self._plan_multiple_sizes_(observation)
+        # Sort products by area in descending order
+        self.product_list.sort(key=lambda x: x[2], reverse=True)
+        
+        placement_plan = self._plan_multiple_sizes_(observation)
 
-        # Print overall utilization for used stocks
         if self.used_stock_area > 0:
             print(f"\nOverall utilization: {self.overall_utilization:.2f}%")
         return placement_plan
 
-    def _plan_single_product_size_(self, observation, prod_size):
-        """Special strategy for single product size"""
-        stocks = observation["stocks"]
-        total_quantity = sum(prod["quantity"] for prod in observation["products"])
-        prod_w, prod_h = prod_size
-        
-        # Calculate how many products can fit in each stock
-        stock_capacities = []
-        for i, stock in enumerate(stocks):
-            stock_w, stock_h = self._get_stock_size_(stock)
-            
-            # Calculate maximum products that can fit
-            products_per_row = stock_w // prod_w
-            rows = stock_h // prod_h
-            capacity = products_per_row * rows
-            
-            if capacity > 0:
-                utilization = (capacity * prod_w * prod_h) / (stock_w * stock_h)
-                stock_capacities.append((i, capacity, utilization))
-        
-        # Sort stocks by utilization (highest first)
-        stock_capacities.sort(key=lambda x: x[2], reverse=True)
-        
-        placement_plan = []
-        products_left = total_quantity
-        
-        for stock_idx, capacity, utilization in stock_capacities:
-            if products_left <= 0:
-                break
-                
-            stock = stocks[stock_idx].copy()  
-            stock_w, stock_h = self._get_stock_size_(stock)
-            products_to_place = min(capacity, products_left)
-            
-            self.used_stock_area += stock_w * stock_h
-            
-            placements = self._place_products_in_stock_(
-                stock_idx, stock_w, stock_h, 
-                prod_w, prod_h, products_to_place
-            )
-            
-            # Update the stock grid for each placement
-            for placement in placements:
-                x, y = placement["position"]
-                for i in range(prod_w):
-                    for j in range(prod_h):
-                        stock[x+i][y+j] = stock_idx
-            
-            placement_plan.extend(placements)
-            products_left -= products_to_place
-            
-            used_area = products_to_place * prod_w * prod_h
-            self.total_used_area += used_area
-            
-            if used_area > 0:
-                print(f"Stock {stock_idx} utilization: {(used_area/stock_w/stock_h)*100:.2f}%")
-            
-        return placement_plan
-
-    def _place_products_in_stock_(self, stock_idx, stock_w, stock_h, prod_w, prod_h, quantity):
-        """Place specified number of same-size products in a stock"""
-        placements = []
-        count = 0
-        
-        for y in range(0, stock_h - prod_h + 1, prod_h):
-            for x in range(0, stock_w - prod_w + 1, prod_w):
-                if count >= quantity:
-                    break
-                    
-                placements.append({
-                    "stock_idx": stock_idx,
-                    "size": [prod_w, prod_h],
-                    "position": (x, y)
-                })
-                count += 1
-                
-            if count >= quantity:
-                break
-                
-        return placements
-
     def _plan_multiple_sizes_(self, observation):
         """Strategy for multiple product sizes"""
-        stocks = observation["stocks"]
-        products = observation["products"]
-        
-        sorted_stocks = []
-        for i, stock in enumerate(stocks):
-            w, h = self._get_stock_size_(stock)
-            sorted_stocks.append((i, w, h, w * h))
-        sorted_stocks.sort(key=lambda x: x[3], reverse=True)
+        if not self.product_list:  # No products to place
+            return []
 
-        product_instances = []
-        for prod in products:
-            quantity = prod["quantity"]
-            size = prod["size"]
-            for _ in range(quantity):
-                product_instances.append((size[0], size[1], size[0] * size[1]))
-        
-        product_instances.sort(key=lambda x: x[2], reverse=True)
-
-        placement_plan = []
-        remaining_products = product_instances.copy()
-        selected_utilizations = []  # Keep track of selected utilizations
-        
-        # Store all possible placements with their utilization
+        selected_utilizations = []
         potential_placements = []
         
-        for stock_idx, stock_w, stock_h, _ in sorted_stocks:
-            if not remaining_products:  # If no products left to place
-                break
+        # Try to place products in each unused stock
+        for stock_idx, stock_w, stock_h, _ in self.sorted_stocks:
+            if stock_idx in self.used_stocks:  # Skip if stock was already used
+                continue
                 
             stock_placements = self._plan_stock_placement_(
-                stock_idx, stock_w, stock_h, remaining_products, observation)
+                stock_idx, stock_w, stock_h, observation)
             
             if stock_placements:
                 used_area = sum(p["size"][0] * p["size"][1] for p in stock_placements)
@@ -536,15 +450,14 @@ class Policy2210xxx(Policy):
                 
                 print(f"Stock {stock_idx} potential utilization: {utilization:.2f}%")
                 
-                # If utilization > 90%, use this stock immediately
                 if utilization >= 90:
                     self.used_stock_area += stock_area
                     self.total_used_area += used_area
-                    selected_utilizations.append(utilization)  # Add to selected utilizations
+                    selected_utilizations.append(utilization)
+                    self.used_stocks.add(stock_idx)
                     print(f"Selected Stock {stock_idx} with high utilization: {utilization:.2f}%")
                     return stock_placements
                 
-                # Otherwise, add to potential placements
                 potential_placements.append({
                     'stock_idx': stock_idx,
                     'placements': stock_placements,
@@ -556,57 +469,63 @@ class Policy2210xxx(Policy):
                 })
 
         if not potential_placements:
-            return []  # Return empty list if no placements possible
+            return []
 
-        # If no high utilization found, use the best available
         best_placement = max(potential_placements, key=lambda x: x['utilization'])
         stock_idx = best_placement['stock_idx']
         self.used_stock_area += best_placement['stock_area']
         self.total_used_area += best_placement['used_area']
-        selected_utilizations.append(best_placement['utilization'])  # Add to selected utilizations
+        selected_utilizations.append(best_placement['utilization'])
+        self.used_stocks.add(stock_idx)
         print(f"Selected Stock {stock_idx} with best possible utilization: {best_placement['utilization']:.2f}%")
 
-        # Calculate overall utilization as average of selected utilizations
         if selected_utilizations:
             self.overall_utilization = sum(selected_utilizations) / len(selected_utilizations)
         
         return best_placement['placements']
-
-
-    def _plan_stock_placement_(self, stock_idx, stock_w, stock_h, products, observation):
-        """Plan placements for a single stock"""
+    
+    def _plan_stock_placement_(self, stock_idx, stock_w, stock_h, observation):
+        """Plan placements for a single stock similar to example policy"""
         placements = []
-        stock = observation["stocks"][stock_idx].copy()  # Create a copy to track placements
+        stock = observation["stocks"][stock_idx].copy()
 
-        for prod_w, prod_h, _ in products:
-            placed = False
+        # Try each product from our sorted list
+        for prod_w, prod_h, _ in self.product_list:
+            # Try to place at each possible position
+            pos_x, pos_y = None, None
             for x in range(stock_w - prod_w + 1):
                 for y in range(stock_h - prod_h + 1):
                     if self._can_place_(stock, (x, y), [prod_w, prod_h]):
-                        placements.append({
-                            "stock_idx": stock_idx,
-                            "size": [prod_w, prod_h],
-                            "position": (x, y)
-                        })
-                        
-                        # Update the stock grid
-                        for i in range(prod_w):
-                            for j in range(prod_h):
-                                stock[x+i][y+j] = stock_idx
-                        
-                        placed = True
+                        pos_x, pos_y = x, y
                         break
-                if placed:
+                if pos_x is not None and pos_y is not None:
                     break
+
+            if pos_x is not None and pos_y is not None:
+                # Add placement
+                placements.append({
+                    "stock_idx": stock_idx,
+                    "size": [prod_w, prod_h],
+                    "position": (pos_x, pos_y)
+                })
+                
+                # Update the stock grid
+                for i in range(prod_w):
+                    for j in range(prod_h):
+                        stock[pos_x+i][pos_y+j] = 1  # Mark as used
 
         return placements
 
     def get_action(self, observation, info):
         # Check if this is a new observation by looking at the stocks
+        stocks_changed = (self.previous_observation is None or 
+                        not np.array_equal(observation["stocks"], 
+                                        self.previous_observation["stocks"]))
+        
         if (not self.has_planned or 
             len(self.placement_plan) == 0 or 
             self.current_step >= len(self.placement_plan) or
-            observation["stocks"] != self.previous_observation["stocks"]):  
+            stocks_changed):  
             
             # Reset all state variables
             self.placement_plan = []
@@ -614,6 +533,8 @@ class Policy2210xxx(Policy):
             self.has_planned = False
             self.used_stock_area = 0
             self.total_used_area = 0
+            self.used_stocks = set()
+            self.sorted_stocks = None  # Reset sorted stocks when environment changes
             
             # Create new placement plan
             self.placement_plan = self._plan_placements_(observation)
