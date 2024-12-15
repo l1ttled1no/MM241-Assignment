@@ -210,9 +210,10 @@ class Policy2210xxx(Policy):
 
             if pos_x is not None and pos_y is not None:
                 # Add placement
+                prod_size = np.array([int(prod_w), int(prod_h)]) 
                 placements.append({
                     "stock_idx": stock_idx,
-                    "size": [prod_w, prod_h],
+                    "size": prod_size,
                     "position": (pos_x, pos_y)
                 })
                 
