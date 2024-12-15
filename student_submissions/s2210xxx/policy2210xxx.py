@@ -219,7 +219,7 @@ class Policy2210xxx(Policy):
                 # Update the stock grid
                 for i in range(prod_w):
                     for j in range(prod_h):
-                        stock[pos_x+i][pos_y+j] = 1  # Mark as used
+                        stock[pos_x+i][pos_y+j] = 0  # Mark as used
 
         return placements
 
